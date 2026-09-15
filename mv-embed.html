@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Bus Vaduz Mauren</title>
+
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Bus">
+<meta name="theme-color" content="#ffffff">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+
+<style>
+  :root{
+    --gruen:#45a12b;
+    --text:#3b3b3b;
+    --grau:#666666;
+    --linie:#e2e6e3;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;overflow:hidden}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;
+    color:var(--text);
+    background:#fff;
+    display:flex;
+    flex-direction:column;
+    padding:clamp(8px,2.5vh,16px) clamp(10px,2vw,18px);
+    -webkit-user-select:none;
+    user-select:none;
+  }
+
+  header{flex:0 0 auto}
+  .kopf{display:flex;align-items:baseline;gap:10px}
+  h1{font-size:clamp(12px,3vh,17px);font-weight:700;margin:0;line-height:1.3}
+  .jetzt{margin-left:auto;font-size:clamp(11px,2.3vh,14px);color:var(--grau);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .richtung{
+    display:flex;
+    gap:6px;
+    margin:clamp(6px,1.6vh,12px) 0 4px;
+    background:#f1f3f1;
+    border-radius:10px;
+    padding:3px;
+  }
+  .richtung button{
+    flex:1 1 0;
+    font:inherit;
+    font-size:clamp(11px,2.3vh,14px);
+    font-weight:600;
+    color:var(--grau);
+    background:transparent;
+    border:0;
+    border-radius:8px;
+    padding:clamp(5px,1.2vh,9px) 4px;
+    cursor:pointer;
+  }
+  .richtung button[aria-pressed="true"]{
+    background:#fff;
+    color:var(--text);
+    box-shadow:0 1px 3px rgba(0,0,0,.14);
+  }
+
+  ul{
+    list-style:none;
+    margin:0;
+    padding:0;
+    flex:1 1 auto;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-evenly;
+    min-height:0;
+    overflow:hidden;
+  }
+  li{
+    display:flex;
+    align-items:center;
+    gap:clamp(6px,1.4vw,12px);
+    padding:clamp(3px,1vh,10px) 0;
+    border-bottom:1px solid var(--linie);
+  }
+  li:last-child{border-bottom:0}
+  .zeit{
+    font-size:clamp(18px,5vh,30px);
+    font-weight:700;
+    line-height:1.05;
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .verspaetung{color:#b4381f;font-size:.5em;font-weight:700;margin-left:3px}
+  .mitte{font-size:clamp(11px,2.4vh,15px);color:var(--grau);flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .linie{
+    display:inline-block;
+    background:var(--gruen);
+    color:#fff;
+    border-radius:4px;
+    padding:2px 9px;
+    font-weight:700;
+    font-size:1.02em;
+    margin-right:7px;
+  }
+  .abfahrt-in{font-size:clamp(11px,2.5vh,16px);font-weight:700;color:var(--text);white-space:nowrap;margin-left:auto;font-variant-numeric:tabular-nums}
+
+  .hinweis{font-size:clamp(11px,2.4vh,15px);color:var(--grau);padding:10px 0;text-align:center}
+  .hinweis a{color:var(--gruen)}
+  footer{
+    flex:0 0 auto;
+    padding-top:clamp(4px,1.2vh,10px);
+    border-top:1px solid var(--linie);
+    font-size:clamp(9px,1.9vh,12px);
+    color:var(--grau);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  footer button{
+    font:inherit;
+    font-size:13px;
+    font-weight:600;
+    color:var(--gruen);
+    background:transparent;
+    border:0;
+    padding:6px 0;
+    margin-left:auto;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="kopf">
+    <h1 id="titel">Vaduz Post → Mauren Vogelparadies</h1>
+    <span class="jetzt" id="jetzt"></span>
+  </div>
+  <div class="richtung">
+    <button type="button" id="hin" aria-pressed="true">nach Mauren</button>
+    <button type="button" id="zurueck" aria-pressed="false">nach Vaduz</button>
+  </div>
+</header>
+
+<ul id="liste"></ul>
+<div class="hinweis" id="status">Verbindungen werden geladen.</div>
+
+<footer>
+  <span id="quelle">Daten werden geladen</span>
+  <button type="button" id="aktualisieren">Aktualisieren</button>
+</footer>
+
+<script>
+(function(){
+  var HALT_A = "Vaduz, Post";
+  var HALT_B_VARIANTEN = ["Mauren FL, Vogelparadies", "Mauren, Vogelparadies", "Vogelparadies"];
+  // Adresse des Vermittlerdienstes, leer lassen für den Direktzugriff
+  var VERMITTLER = "https://fahrplan-mv.yavuz-kaya89.workers.dev/";
+  var ANZAHL = 4;
+  var TAKT = 120000;
+
+  var LINIENFARBEN = {
+    "11": "#fcc300",
+    "12": "#fcc300",
+    "13": "#45a12b",
+    "13E": "#45a12b",
+    "14": "#45a12b",
+    "40": "#6f6352",
+    "41": "#6f6352"
+  };
+  var STANDARDFARBE = "#45a12b";
+
+  var richtungHin = true;
+  var quelle = "";
+
+  var liste = document.getElementById("liste");
+  var status = document.getElementById("status");
+  var jetztFeld = document.getElementById("jetzt");
+  var titel = document.getElementById("titel");
+  var knopfHin = document.getElementById("hin");
+  var knopfZurueck = document.getElementById("zurueck");
+
+  function zweistellig(n){ return (n < 10 ? "0" : "") + n; }
+  function uhrzeit(d){ return zweistellig(d.getHours()) + ":" + zweistellig(d.getMinutes()); }
+  function minutenBis(d){ return Math.round((d.getTime() - Date.now()) / 60000); }
+
+  function datumAus(text){
+    if(!text){ return null; }
+    return new Date(String(text).replace(" ", "T"));
+  }
+
+  function verspaetungAus(wert){
+    if(wert === null || wert === undefined || wert === ""){ return 0; }
+    if(wert === "X"){ return "X"; }
+    var zahl = parseInt(String(wert).replace("+", ""), 10);
+    return isNaN(zahl) ? 0 : zahl;
+  }
+
+  function linieAusText(text){
+    if(!text){ return "Bus"; }
+    var treffer = String(text).match(/[0-9]+[A-Z]?/);
+    return treffer ? treffer[0] : String(text);
+  }
+
+  // Quelle 1: offizielle Schnittstelle OJP 2.0 über den eigenen Vermittler
+  function holenOjp(von, nach){
+    if(!VERMITTLER){ return Promise.reject(new Error("kein Vermittler")); }
+    var url = VERMITTLER
+      + (VERMITTLER.indexOf("?") >= 0 ? "&" : "?") + "from=" + encodeURIComponent(von)
+      + "&to=" + encodeURIComponent(nach)
+      + "&num=" + ANZAHL;
+    return fetch(url).then(function(a){
+      if(!a.ok){ throw new Error("HTTP " + a.status); }
+      return a.json();
+    }).then(function(d){
+      if(!d || !d.verbindungen || !d.verbindungen.length){ throw new Error("leer"); }
+      quelle = "Echtzeit (OJP)";
+      return d.verbindungen.map(function(v){
+        return {
+          ab: new Date(v.abfahrt),
+          an: new Date(v.ankunft),
+          verspaetung: v.verspaetung || 0,
+          linie: String(v.linie || "Bus"),
+          farbe: null,
+          schrift: null,
+          umstiege: v.umstiege || 0
+        };
+      });
+    });
+  }
+
+  // Quelle 2: transport.opendata.ch, nur Sollzeiten
+  function holenOpendata(von, nach){
+    var url = "https://transport.opendata.ch/v1/connections"
+      + "?from=" + encodeURIComponent(von)
+      + "&to=" + encodeURIComponent(nach)
+      + "&limit=" + ANZAHL;
+    return fetch(url).then(function(a){
+      if(!a.ok){ throw new Error("HTTP " + a.status); }
+      return a.json();
+    }).then(function(d){
+      if(!d || !d.connections || !d.connections.length){ throw new Error("leer"); }
+      quelle = "Sollzeiten (opendata.ch)";
+      return d.connections.map(function(v){
+        var abschnitt = (v.sections || []).find(function(s){ return s.journey; });
+        var journey = abschnitt && abschnitt.journey ? abschnitt.journey : {};
+        return {
+          ab: new Date(v.from.departure),
+          an: new Date(v.to.arrival),
+          verspaetung: v.from.delay || 0,
+          linie: String(journey.number || journey.category || "Bus"),
+          umstiege: v.transfers || 0
+        };
+      });
+    });
+  }
+
+  function holen(i){
+    i = i || 0;
+    if(i >= HALT_B_VARIANTEN.length){ return Promise.reject(new Error("keine Haltestelle")); }
+    var b = HALT_B_VARIANTEN[i];
+    var von = richtungHin ? HALT_A : b;
+    var nach = richtungHin ? b : HALT_A;
+    return holenOjp(von, nach)
+      .catch(function(){ return holenOpendata(von, nach); })
+      .catch(function(){ return holen(i + 1); });
+  }
+
+  function zeichnen(fahrten){
+    liste.innerHTML = "";
+    fahrten.forEach(function(f){
+      var ausfall = f.verspaetung === "X";
+      var minuten = minutenBis(f.ab);
+
+      var eintrag = document.createElement("li");
+
+      var zeit = document.createElement("span");
+      zeit.className = "zeit";
+      zeit.textContent = uhrzeit(f.ab);
+      if(ausfall){
+        zeit.style.textDecoration = "line-through";
+        zeit.style.color = "#b4381f";
+      } else if(f.verspaetung > 0){
+        var vs = document.createElement("span");
+        vs.className = "verspaetung";
+        vs.textContent = "+" + f.verspaetung;
+        zeit.appendChild(vs);
+      }
+
+      var mitte = document.createElement("span");
+      mitte.className = "mitte";
+      var badge = document.createElement("span");
+      badge.className = "linie";
+      badge.textContent = f.linie;
+      badge.style.background = f.farbe || LINIENFARBEN[String(f.linie)] || STANDARDFARBE;
+      if(f.schrift){ badge.style.color = f.schrift; }
+      mitte.appendChild(badge);
+      mitte.appendChild(document.createTextNode(
+        ausfall ? "faellt aus"
+                : "an " + uhrzeit(f.an) + (f.umstiege ? ", " + f.umstiege + "x umsteigen" : ", direkt")
+      ));
+
+      var rest = document.createElement("span");
+      rest.className = "abfahrt-in";
+      if(ausfall){
+        rest.textContent = "";
+      } else if(f.verspaetung > 0){
+        rest.textContent = "in " + Math.max(minuten + f.verspaetung, 0) + " Min.";
+        rest.style.color = "#b4381f";
+      } else {
+        rest.textContent = minuten <= 0 ? "jetzt" : "in " + minuten + " Min.";
+      }
+
+      eintrag.appendChild(zeit);
+      eintrag.appendChild(mitte);
+      eintrag.appendChild(rest);
+      liste.appendChild(eintrag);
+    });
+  }
+
+  function laden(){
+    jetztFeld.textContent = uhrzeit(new Date()) + " Uhr";
+    titel.textContent = richtungHin ? "Vaduz Post → Mauren Vogelparadies" : "Mauren Vogelparadies → Vaduz Post";
+    knopfHin.setAttribute("aria-pressed", richtungHin ? "true" : "false");
+    knopfZurueck.setAttribute("aria-pressed", richtungHin ? "false" : "true");
+
+    holen().then(function(fahrten){
+      var kuenftig = fahrten.filter(function(f){ return f.ab && minutenBis(f.ab) >= -1; });
+      if(!kuenftig.length){
+        liste.innerHTML = "";
+        status.style.display = "";
+        status.textContent = "Zurzeit keine Verbindung gefunden.";
+        return;
+      }
+      zeichnen(kuenftig);
+      status.style.display = "none";
+      var feld = document.getElementById("quelle");
+      if(feld){ feld.textContent = "Daten: " + quelle; }
+    }).catch(function(){
+      liste.innerHTML = "";
+      status.style.display = "";
+      status.innerHTML = 'Keine Verbindung zum Fahrplan. <a href="https://liemobil.li/de/fahrplan#fahrplanabfrage">LIEmobil oeffnen</a>';
+    });
+  }
+
+  function wechseln(hin){
+    if(richtungHin !== hin){
+      richtungHin = hin;
+      liste.innerHTML = "";
+      status.style.display = "";
+      status.textContent = "Verbindungen werden geladen.";
+    }
+    laden();
+  }
+
+  knopfHin.addEventListener("click", function(){ wechseln(true); });
+  knopfZurueck.addEventListener("click", function(){ wechseln(false); });
+  document.getElementById("aktualisieren").addEventListener("click", laden);
+  document.addEventListener("visibilitychange", function(){
+    if(!document.hidden){ laden(); }
+  });
+
+  laden();
+  setInterval(laden, TAKT);
+})();
+</script>
+
+</body>
+</html>
